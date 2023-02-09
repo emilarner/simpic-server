@@ -1,4 +1,5 @@
 *.o
+*.so
 testing/*.o
 simpic_server
 .vscode
