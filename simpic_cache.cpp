@@ -110,11 +110,14 @@ namespace SimpicServerLib
 
     void SimpicCache::insert(Image *img)
     {
+        entries_mutex.lock();
+
         /* If it is not already a part of the cache, make sure it is marked as a new entry. */
         if (cached.find(img->sha256) == cached.end())
             new_entries.push_back({img->sha256, img});
 
         cached[img->sha256] = img;
+        entries_mutex.unlock();
     }
 
     Image *SimpicCache::get_image(sha256ptr_t hash)

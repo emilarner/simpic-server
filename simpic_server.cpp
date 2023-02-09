@@ -162,7 +162,6 @@ namespace SimpicServerLib
 
 						/* If we have a directory conflict*/
 						bool exists = false;
-						std::memset(&exists, 0, sizeof(exists)); // stack memory reset. 
 
 						for (std::pair<std::string, bool> item : active_folders)
 						{

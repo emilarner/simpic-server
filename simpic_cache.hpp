@@ -80,6 +80,7 @@ namespace SimpicServerLib
 
     public:
         std::mutex saving_mutex;
+        std::mutex entries_mutex;
 
         SimpicCache(std::string filename);
 
