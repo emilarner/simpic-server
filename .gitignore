@@ -1,5 +1,4 @@
 *.o
-testing/dataset/*
 testing/*.o
 simpic_server
 .vscode

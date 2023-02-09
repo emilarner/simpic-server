@@ -83,67 +83,60 @@ namespace SimpicServerLib
     std::vector<std::vector<Image*>*> Image::find_similar_images(std::vector<Image*> &images, 
             uint8_t max_ham, std::function<void(int)> progress_callback)
     {
-        std::map<sha256ptr_t, std::vector<Image*>*, SHA256Comparator> image_hams; 
-        std::set<sha256ptr_t, SHA256Comparator> seen;
+        std::unordered_map<int, std::vector<Image*>*> results;
+        std::unordered_set<int> seen;
 
         /* Generate non-repeating permutations of images. */
-
         int count = 0;
         for (int i = 0; i < images.size(); i++)
         {
             Image *current = images[i];
 
             /* We don't need to over this, since we already did below... */
-            if (seen.find(current->sha256) != seen.end())
+            if (seen.find(i) != seen.end())
                 continue;
 
-            image_hams[current->sha256] = new std::vector<Image*>();
-            image_hams[current->sha256]->push_back(current);
+            results[i] = new std::vector<Image*>();
+            results[i]->push_back(current);
 
-            bool found = false;
 
             for (int j = i + 1; j < images.size(); j++)
             {
                 /* Again, let's not repeat things.*/
-                if (seen.find(images[j]->sha256) != seen.end())
+                if (seen.find(j) != seen.end())
                     continue;
 
                 /* The SHA256 hashes of the files are the same, therefore they are duplicates. */
                 if (!std::memcmp(current->sha256, images[j]->sha256, SHA256_DIGEST_LENGTH))
                 {
-                    seen.insert(images[j]->sha256);
-                    image_hams[current->sha256]->push_back(images[j]);
+                    seen.insert(j);
+                    //image_hams[current->sha256]->push_back(images[j]);
+                    results[i]->push_back(images[j]);
                     continue;
                 }
 
                 uint8_t hamming_distance = ph_hamming_distance(current->phash, images[j]->phash);
 
-                /* Not within an acceptable hamming distance, so skip it. */
                 if (hamming_distance > max_ham)
                     continue;
 
 
                 count++;
-                image_hams[current->sha256]->push_back(images[j]);
-                seen.insert(images[j]->sha256);
+
+                results[i]->push_back(images[j]);
+                seen.insert(j);
             }
 
             if (count != 0)
                 progress_callback(count);
                 
-            seen.insert(current->sha256);
+            seen.insert(i);
         }
 
         std::vector<std::vector<Image*>*> result;
 
-        for (auto &[key, value] : image_hams)
+        for (auto &[key, value] : results)
         {
-            if (value->size() <= 1)
-            {
-                delete value;
-                continue;
-            }
-
             result.push_back(value);
         }
 

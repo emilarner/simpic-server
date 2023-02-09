@@ -13,6 +13,21 @@
 
 using namespace SimpicServerLib;
 
+void help()
+{
+    const char *msg =
+    "simpic_server - The server daemon for Simpic.\n"
+    "USAGE:\n\n"
+    "-p, --port [PORT]              The port for Simpic to bind on. Default: 20202\n"
+    "~~~~~~~^ you don't need to care about this, if not running as a service.\n"
+    "-f, --force-delete             Don't move to a recycle bin, but completely delete.\n"
+    "~~~~~~~^ not recommended.\n"
+    "-r, --recycle-bin [PATH]       Set the recycle bin somewhere other than the default.\n"
+    "-c, --cache [PATH]             Change the default directory of the cache.\n";
+
+    std::cout << msg << std::endl;
+}
+
 int main(int argc, char **argv, char **envp)
 {
     std::srand(std::time(nullptr));
@@ -85,6 +100,13 @@ int main(int argc, char **argv, char **envp)
         }
         else if (!std::strcmp(argv[i], "-f") || !std::strcmp(argv[i], "--force-delete"))
             force_delete = true;
+
+        else if (!std::strcmp(argv[i], "-h") || !std::strcmp(argv[i], "--help"))
+        {
+            help();
+            return 0;
+        }
+
         else
         {
             std::cerr << "Invalid argument '" << argv[i] << "'. Exiting..." << "\n";
@@ -94,9 +116,8 @@ int main(int argc, char **argv, char **envp)
     
     if (!port)
     {
-        std::cerr << "Warning: Either you entered 0 as a port to bind on (which is invalid) or you did not specify a port to bind on. By default, we will be binding on PORT 8081. " << "\n";
-
-        port = 8081;
+        std::cerr << "Warning: Either you entered 0 as a port to bind on (which is invalid) or you did not specify a port to bind on. By default, we will be binding on PORT 20202. " << "\n";
+        port = 20202;
     }
 
     /* C/C++ definitely does exist. We're having to constantly battle between C-style strings and the more contemporary std::string objects. */
