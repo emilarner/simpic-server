@@ -1,4 +1,3 @@
-
 # simpic-server
 The server daemon for simpic--only on Linux. 
 
@@ -29,7 +28,11 @@ Here are the valid arguments to pass to simpic_server, quoted directly from its 
 
 You may notice command-line arguments instead of a dedicated configuration file for the Simpic server. Our response: simpic_server is not large enough to warrant such a thing, and you should be comfortable with editing the service file to have the command-line arguments that you want.
 
-Why not UNIX sockets? Simpic is not meant to be isolated to one system, but it is supposed to be accessible over a network to scan for related images across computers. Plus, the overhead difference from a TCP socket versus a UNIX socket is not dramatic at all. Port 20202 is a pretty non-intrusive and not widely used port, as well. 
+Why not UNIX sockets? Simpic is not meant to be isolated to one system, but it is supposed to be accessible over a (closed) network to scan for related images across (local) computers. Plus, the overhead difference from a TCP socket versus a UNIX socket is not dramatic at all. Port 20202 is a pretty non-intrusive and not widely used port, as well. That being said, please do not forward Simpic over the Internet, it's just not a good idea and it's not really even necessary. 
+
+Simpic does implementing a 'locking mechanism' using UNIX sockets, to prevent against multiple Simpic instances running at the same time, however, as such a thing would almost guarantee that the caching system would become corrupt. This UNIX socket is at /tmp/simpic_server.locksock and its existence and ability to be interfaced with signals that there is another Simpic server instance running. 
+
+Speaking of files that simpic_server creates, a folder made in the home folder of the user running simpic_server named *.simpic* will be made. The default recycling bin can be found here, where files that were selected by a client will be moved to. The cache file can also be found here, where it is named *cache.simpic_cache*. Finally, a log of all files that have been moved (including their original names and paths) can be found in the file *moving_log*, which is also obviously in the *.simpic* folder. In short, everything you need to know about the Simpic server file-wise will be in *~/.simpic*. 
 
 The Simpic server runs on the machine (default port: 20202) which is to scan for related media files, of which is accessible by the Simpic client programs and/or libraries. It is designed this way to allow for scanning of related images on machines that are servers or are not currently being physically used by the user, though simpic_client allows for easy usage on one's local machine. It is also useful to have a Simpic server, as to allow for efficient and synchronized caching of perceptual hashes, as to avoid unnecessary computation. Most of all, it provides an abstraction for other applications to scan for related images, with ease and relative efficiency--no matter if the language is interpreted or not. If we want to update the algorithm used in Simpic, we can, since it is idiomatic and the protocol doesn't care about the actual underlying implementation.
 

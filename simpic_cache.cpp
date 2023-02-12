@@ -2,9 +2,97 @@
 
 namespace SimpicServerLib
 {
+    SimpicCacheException::SimpicCacheException(std::string message, int _errno)
+    {
+        msg = message;
+        errnum = _errno;
+    }
+
+    std::string &SimpicCacheException::what()
+    {
+        return msg;
+    }
+
+    SimpicMultipleInstanceException::SimpicMultipleInstanceException(std::string message)
+    {
+        msg = message;
+    }
+
+    std::string &SimpicMultipleInstanceException::what()
+    {
+        return msg;
+    }
+
     SimpicCache::SimpicCache(std::string filename)
     {
         location = filename;
+
+        /* The Simpic cache will get corrupted if multiple server instances are ran. */
+        /* We use a UNIX socket to determine if an instance is running, to avoid */
+        /* duplicates. */
+
+        int connsockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+        struct sockaddr_un connsock;
+        connsock.sun_family = AF_UNIX;
+        std::strncpy(connsock.sun_path, "/tmp/simpic_server.locksock", sizeof(connsock.sun_path));
+
+        /* The socket can be connected to, that means another instance is running!*/
+        if (connect(connsockfd, (struct sockaddr*) &connsock, (socklen_t) sizeof(connsock)) != -1)
+        {
+            throw SimpicMultipleInstanceException(
+                "Another instance of Simpic server is already running--that's not allowed."
+            );
+        }
+
+        remove("/tmp/simpic_server.locksock");
+
+        /* This thread runs the UNIX socket logic. */
+        std::thread lock_unix([this]() -> void {
+            int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+            this->lock_fd = fd;
+
+            struct sockaddr_un sock;
+            sock.sun_family = AF_UNIX;
+            std::strncpy(sock.sun_path, "/tmp/simpic_server.locksock", sizeof(sock.sun_path));
+
+            if (bind(fd, (struct sockaddr*) &sock, (socklen_t) sizeof(sock)) < 0)
+            {
+                throw SimpicCacheException(
+                    "Failed to bind the simpic cache lock at /tmp/simpic_server.locksock",
+                    errno
+                );
+            
+            }
+
+            listen(fd, 64);
+
+            while (true)
+            {
+                int cfd = 0;
+                struct sockaddr_un lol;
+                socklen_t lol_size = sizeof(lol);
+
+                if ((cfd = accept(fd, (struct sockaddr*) &lol, &lol_size) < 0))
+                {
+                    throw SimpicCacheException(
+                        "Failed to accept a client for cache lock at /tmp/simpic_server.locksock",
+                        errno
+                    );
+                }
+
+                const char msg[] = "Open.";
+                send(cfd, msg, sizeof(msg) + 1, 0);
+                close(cfd);
+            }       
+        });
+
+        lock_unix.detach();
+    }
+
+    SimpicCache::~SimpicCache()
+    {
+        close(lock_fd);
+        unlink("/tmp/simpic_server.locksock");
     }
 
     void SimpicCache::init_cache_file()
@@ -20,19 +108,22 @@ namespace SimpicServerLib
 
     int SimpicCache::readall()
     {
-        std::FILE *fp = std::fopen(location.c_str(), "rb");
-
+        FILE *fp = std::fopen(location.c_str(), "rb");
         if (fp == nullptr)
-        {
-            if (errno != ENOENT)
-                return errno;
-
-            return ENOENT;
-        }
+            return 0;
 
         struct cache_header ch;
         input = std::ifstream(location, std::ios::binary);
         input.read((char*) &ch, sizeof(ch));
+
+        /* Erroneous magic. */
+        if (ch.magic != SIMPIC_CACHE_MAGIC)
+        {
+            throw SimpicCacheException(
+                (std::string)"The cache is corrupt and does not have the magic: " + location,
+                0
+            );
+        }
 
         for (int i = 0; i < ch.entries; i++)
         {
@@ -68,6 +159,12 @@ namespace SimpicServerLib
     void SimpicCache::saveall()
     {
         saving_mutex.lock();
+
+        if (new_entries.size() == 0)
+        {
+            saving_mutex.unlock();
+            return;
+        }
 
         struct cache_header chdr;
         chdr.magic = SIMPIC_CACHE_MAGIC;
@@ -105,6 +202,7 @@ namespace SimpicServerLib
         new_entries.clear();
         writing.flush();
         writing.close();
+
         saving_mutex.unlock();
     }
 
@@ -117,6 +215,7 @@ namespace SimpicServerLib
             new_entries.push_back({img->sha256, img});
 
         cached[img->sha256] = img;
+
         entries_mutex.unlock();
     }
 

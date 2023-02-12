@@ -7,10 +7,16 @@
 #include <vector>
 #include <algorithm>
 #include <mutex>
+#include <thread>
 
 #include <cstdio>
 #include <errno.h>
 #include <cstring>
+
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <sys/un.h>
 
 #include <openssl/sha.h>
 
@@ -57,9 +63,30 @@ namespace SimpicServerLib
         uint32_t size;
     };
 
+    class SimpicCacheException : std::exception
+    {
+    public:
+        int errnum;
+        std::string msg;
+
+        SimpicCacheException(std::string message, int _errno);
+        std::string &what();
+    };
+
+    class SimpicMultipleInstanceException : std::exception
+    {
+    public:
+        std::string msg;
+        
+        SimpicMultipleInstanceException(std::string message);
+        std::string &what();
+    };
+
     class SimpicCache
     {
     private:
+        int lock_fd;
+
         std::string location;
         std::ofstream output;
         std::ifstream input;
@@ -83,6 +110,7 @@ namespace SimpicServerLib
         std::mutex entries_mutex;
 
         SimpicCache(std::string filename);
+        ~SimpicCache();
 
         void init_cache_file();
 

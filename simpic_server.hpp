@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <unistd.h>
 
+#include <signal.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
@@ -61,7 +62,7 @@ namespace SimpicServerLib
         /* Go through a directory, grab all of its files, and then send them to the client (simplified)*/
         int simpic_in_directory(std::string &dir, bool recursive, uint8_t max_ham);
 
-        SimpicClient(SimpicCache *_cache, std::string &recycle_bin, std::ofstream *_moving_log);
+        SimpicClient(SimpicCache *_cache, const std::string &recycle_bin, std::ofstream *_moving_log);
     };
 
     class SimpicServer
@@ -83,11 +84,12 @@ namespace SimpicServerLib
 
         std::set<std::pair<std::string, bool>> active_folders;
     public:
-        SimpicServer(uint16_t _port, std::string &simpic_dir, std::string &_recycle_bin);
+        std::function<void()> on_ready;
+
+        SimpicServer(uint16_t _port, const std::string &simpic_dir, const std::string &_recycle_bin);
         SimpicServer(uint16_t _port);
         void start();
         void handler(SimpicClient *client);
-
         void save_cache();
     };
 }

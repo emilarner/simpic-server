@@ -136,6 +136,14 @@ int main(int argc, char **argv, char **envp)
 
 
     /* Start the actual server after we've done all of the processing...*/
-    SimpicServer sv(port, simpic_local_folder, cpp_recycling_bin);
-    sv.start();
+    try
+    {
+        SimpicServer sv(port, simpic_local_folder, cpp_recycling_bin);
+        sv.start();
+    }
+    catch (SimpicMultipleInstanceException &ex)
+    {
+        std::cerr << ex.what() << std::endl;
+        return -1;
+    }
 }

@@ -24,7 +24,7 @@ namespace SimpicServerLib
     std::vector<std::string> split_string(const std::string &str, const std::string &delimiter);
 
     std::string home_folder();
-    std::string simpic_folder(std::string &home);
+    std::string simpic_folder(const std::string &home);
     std::string concatenate_folder(std::string &one, std::string &two);
 
     bool good_directory(std::string &where, bool print);

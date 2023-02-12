@@ -83,7 +83,7 @@ namespace SimpicServerLib
         return result;
     }
 
-    std::string simpic_folder(std::string &home)
+    std::string simpic_folder(const std::string &home)
     {
         std::string result = "";
         result += home;

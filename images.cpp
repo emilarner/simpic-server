@@ -137,6 +137,9 @@ namespace SimpicServerLib
 
         for (auto &[key, value] : results)
         {
+            if (value->size() < 2)
+                continue;
+
             result.push_back(value);
         }
 
@@ -156,6 +159,9 @@ namespace SimpicServerLib
 
     Image::Image(std::string _directory, std::string _filename, FILE *fp, sha256ptr_t hash)
     {
+        height = 0;
+        length = 0;
+
         bad = false;
         path = _directory;
 

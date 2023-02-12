@@ -2,7 +2,7 @@
 
 namespace SimpicServerLib
 {
-	SimpicClient::SimpicClient(SimpicCache *_cache, std::string &recycle_bin, std::ofstream *_moving_log)
+	SimpicClient::SimpicClient(SimpicCache *_cache, const std::string &recycle_bin, std::ofstream *_moving_log)
 	{
 		cache = _cache;
 		recycling_bin = recycle_bin;
@@ -24,7 +24,7 @@ namespace SimpicServerLib
 		moving_log->flush();
 	}
 
-	SimpicServer::SimpicServer(uint16_t _port, std::string &simpic_dir, std::string &_recycle_bin)
+	SimpicServer::SimpicServer(uint16_t _port, const std::string &simpic_dir, const std::string &_recycle_bin)
 	{
 		recycle_bin_on = _recycle_bin != "";
 		recycle_bin = _recycle_bin;
@@ -35,6 +35,7 @@ namespace SimpicServerLib
 		cache->readall();
 
 		moving_log = std::ofstream(simpic_dir + "moving_log", std::ios::binary | std::ios::app);
+		on_ready = []() -> void {};
 	}
 
 	void SimpicServer::save_cache()
@@ -50,6 +51,7 @@ namespace SimpicServerLib
 
 	void SimpicServer::start()
 	{
+		signal(SIGPIPE, SIG_IGN);
 		/* Make a TCP/IPv4 socket. */
 		fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
@@ -73,6 +75,10 @@ namespace SimpicServerLib
 		}
 
 		listen(fd, 64);
+
+		/* A callback for when the Simpic server is ready. */
+		on_ready();
+
 		while (true)
 		{
 			struct sockaddr_in client;
@@ -103,6 +109,8 @@ namespace SimpicServerLib
 
 	void SimpicServer::handler(SimpicClient *client)
 	{
+		signal(SIGPIPE, SIG_IGN);
+
 		char *path = nullptr;
 
 		try 
@@ -128,13 +136,18 @@ namespace SimpicServerLib
 					continue;
 				}*/
 
-				path = new char[req.path_length];
+				if (req.path_length != 0)
+				{
+					path = new char[req.path_length];
 
-				/* Possible vulnerability here, but this program isn't supposed to be available to the wider internet... so does it even matter? This is also overkill. */
-				recvall(client->fd, path, req.path_length);
+					/* Possible vulnerability here, but this program isn't supposed */
+					/* to be available to the wider internet... so does it even matter? This is also overkill. */
+					recvall(client->fd, path, req.path_length);
 
-				/* A null-terminator is never guaranteed, so put one just in case where the client said it should be. */
-				path[req.path_length - 1] = '\0';
+					/* A null-terminator is never guaranteed, so put one just in case where the client */
+					/* said it should be. */
+					path[req.path_length - 1] = '\0';
+				}
 
 				bool recursive = false;
 
@@ -190,8 +203,7 @@ namespace SimpicServerLib
 							mh._errno = 0;
 							mh.set_no = -1;
 							sendall(client->fd, &mh, sizeof(mh));
-
-							//goto cleanup;
+							goto cleanup;
 						}
 						
 						client_mutex.unlock();
@@ -206,16 +218,24 @@ namespace SimpicServerLib
 						/* Call the function that handles this. If it exited with 0, an error occured! */
 						if ((error = client->simpic_in_directory(ppath, recursive, req.max_ham)) != 0)
 						{
-							mh.code = (uint8_t) MainHeaderCodes::Failure;
-							mh._errno = error;
-							mh.set_no = -1;
+							/* An error of -1 indicates the connection died. */
+							if (error != -1)
+							{
+								mh.code = (uint8_t) MainHeaderCodes::Failure;
+								mh._errno = error;
+								mh.set_no = -1;
 
-							sendall(client->fd, &mh, sizeof(mh));
+								sendall(client->fd, &mh, sizeof(mh));
+							}
 						}
 
 						client_mutex.lock();
 						active_folders.erase({ppath, recursive});
 						client_mutex.unlock();
+
+						/* If there was an error, escape from the loop and free resources. */
+						if (error != 0)
+							goto cleanup;
 
 						break;
 					}
@@ -228,9 +248,6 @@ namespace SimpicServerLib
 		catch (simpic_networking_exception &ex)
 		{
 			std::cerr << "[" << client->to_string() << "]: " << "Networking error occured: " << ex.what() << std::endl;
-
-			/* Memory needs to be freed if shit fucks up. */ 
-			delete client;
 		}
 		catch (std::exception &ex)
 		{
@@ -238,7 +255,7 @@ namespace SimpicServerLib
 			std::cerr << "\n";
 		}
 
-	cleanup:
+cleanup:
 		/* Protect against freeing null pointer. */
 		if (path != nullptr)
 			delete path;
@@ -248,6 +265,8 @@ namespace SimpicServerLib
 			close(client->fd);
 			delete client;
 		}
+
+		return;
 	}
 
 
@@ -444,17 +463,19 @@ namespace SimpicServerLib
 		std::vector<std::vector<Image*>*> results = Image::find_similar_images(imgs, max_ham, [](int x){});
 		
 		int total = results.size();
-		if (!total)
-		{
-			struct MainHeader hdr;
-			hdr.code = (uint8_t)MainHeaderCodes::NoResults;
-			sendall(fd, &hdr, sizeof(hdr));
-			cache->saveall();
-			return 0;
-		}
 
 		try 
 		{
+			/* No results were found--tell the client that! */
+			if (!total)
+			{
+				struct MainHeader hdr;
+				hdr.code = (uint8_t)MainHeaderCodes::NoResults;
+				sendall(fd, &hdr, sizeof(hdr));
+				cache->saveall();
+				return 0;
+			}
+
 			/* We need to tell the client how many results we've gotten. */
 			struct MainHeader hdr;
 			hdr.code = (uint8_t) MainHeaderCodes::Success;
@@ -474,7 +495,7 @@ namespace SimpicServerLib
 		{
 			std::cerr << "(" << to_string() << "): Network error: " << ex.what() << std::endl;
 			cache->saveall();
-			return ex.errnum;
+			return -1;
 		}
 
 	end:
