@@ -112,6 +112,8 @@ namespace SimpicServerLib
         if (fp == nullptr)
             return 0;
 
+        fclose(fp);
+        
         struct cache_header ch;
         input = std::ifstream(location, std::ios::binary);
         input.read((char*) &ch, sizeof(ch));
