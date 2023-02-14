@@ -3,22 +3,6 @@
 #include <cstdint>
 #include <openssl/sha.h>
 
-
-/*
-	The Protocol:
-
-	The client connects to the server, obviously, sending a ClientRequest, indicating whether they want to exit, scan, or scan recursively. Recursive scans are not implemented at the moment, but they'd be fairly trivial to implement, nonetheless. The server receives the path that it shall start scanning in, as given by the ClientRequest structure, which is receives.
-
-	Once the server has collected an array of arrays of files, each of them called a 'set' within the context of Simpic, it will begin to send each one of them, denoting their type... the structure used for this is struct SetHeader, and it shall be sent to the client for every set. Before this, however, the client needs to be aware that the scan has been completed and how many results the server found, which is conveyed through the MainHeader sent by the server.
-
-	For each set, another structure describing the kind of set and the number of entries in the set will be sent. At this moment, only detection for similar images is supported, but the program is modular and abstracted to the extent where implementation of other forms of media will be rather trivial. For every entry, the number of which specified by the set structure, a structure containing its data shall be sent to the client--for images, it's struct ImageHeader. This shall only contain cheap-to-send metadata, however, and the client must do additional work later on.
-
-	After such a structure has been sent to the client, the null-terminated filename and pathnames of the file shall be sent, the lengths of which were specified in the aforementioned structure sent. The client will now send a plea (struct ClientPlea)--it may not want to receive the actual data of the file. If the plea says no data, then the server shall not send the corresponding file data; otherwise, yeah.
-
-	Once all of that is done for the individual image or other piece of media, the server must wait for a main plea (struct ClientMainPlea). This is useful for providing an asynchronous, event-driven model between the client and server, which is useful for the GUI-oriented nature of Simpic. The client can either tell, through the main plea, whether to continue or stop. If continued, then more entries will be sent in the way specified. The client knows how many entries are in a set, so it knows when it will have to read a struct SetHeader, the next time it is sent on the next set, until the SetHeader  
-
-*/
-
 namespace SimpicServerLib
 {
     /* The header which is sent first and only once on each query. It describes how many manual checks that the user is going to have to make, among other things.*/
@@ -29,7 +13,8 @@ namespace SimpicServerLib
         Failure = 1,
         DirectoryAlreadyActive = 2,
         NoResults = 3,
-        Limits = 4
+        UnreasonablyLongPath = 4, 
+        UnreasonablyLongMaxHam = 5
     };
 
     enum class DataTypes
@@ -47,6 +32,17 @@ namespace SimpicServerLib
         uint8_t code; 
         uint8_t _errno;
         uint16_t set_no; 
+    };
+
+    /* While the server is in the process of scanning, provide updates.*/
+    struct __attribute__((__packed__)) UpdateHeader
+    {
+        bool done; // The client shouldn't receive updates after this goes to true.
+        // these fields explain the number of *total* currently found medias. 
+        uint16_t images;
+        uint16_t audios;
+        uint16_t videos;
+        uint16_t texts;
     };
 
     /* In this set of similar media types to keep, what type are they and how many are there of them, so that the client can process all of this? */
@@ -82,9 +78,11 @@ namespace SimpicServerLib
 
     enum class ClientRequests
     {
-        Exit,
-        Scan,
-        ScanRecursive
+        Exit, // Close the connection, no more requests. 
+        Scan, // Scan a directory for similar images. 
+        ScanRecursive, // Scan recursively in a directory for similar images. 
+        Check, // Check if a file or a set of files would be duplicates in a directory.
+        CheckRecursive // Check recursively the same thing as above ^^^
     };
 
     struct __attribute__((__packed__)) ClientRequest
@@ -92,9 +90,46 @@ namespace SimpicServerLib
         uint8_t request;
         uint8_t types; // bitwise field for the file types the client wants.
         uint8_t max_ham; // maximum hamming distance that the client is willing to take. 
-        uint16_t path_length;
+        uint16_t path_length; // of where to start searching
 
         // client will send a null-terminated path length. 
+    };
+
+    enum class ClientCheckRequestTypes
+    {
+        ByData, // the client shall send the file data for the server to check.
+        ByPath, // the client shall send the path of the file that already exists on the server
+        ByPHash // the client shall send the standard perceptual hash for that format.
+        // ~~~^ for images, it's the 64-bit perceptual hash from the DCT of the image.
+    };
+
+    /* When doing a check, the server needs to be given the file to check, along with its type. */
+    /* This will be sent after the initial ClientRequest handshake. */
+    /* The client can send an array of ClientCheckRequests, because after the initial ClientRequest*/
+    /* handshake, it will send a uint16_t specifying the number of files to check against the path*/
+    /* provided by the path in ClientRequest. */
+    struct __attribute__((__packed__)) ClientCheckRequest
+    {
+        uint32_t length; // the length in bytes of the data sent according to
+                        // ClientCheckRequestTypes.
+        uint8_t type; // what kind of file?
+        uint8_t method; // how is the server going to know how to check these files?
+        // ~~~^ an enum from ClientCheckRequestTypes
+    };
+
+    struct __attribute__((__packed__)) ServerCheckResponse
+    {
+        uint16_t results; // if -1, the server didn't find anything; otherwise, no. of results
+    };
+
+    struct __attribute__((__packed__)) ServerCheckIndividualGenericResponse
+    {
+        uint16_t index; // this tells you from what index we are talking about
+                        // ~~^ referring to the indices given initially by the client to check.
+        
+        struct SetHeader info; // and now the information of all of the files that conflict.
+        // hence forth, treat it as you would a regular scan... the info structure will contain
+        // the type and number of subsequent headers that you may plea to receive data or not
     };
 
     /* A plea containing bitwise flags (abstracted through bitfields) of what the client does not want from the file or whether they want to skip the file entirely. */
@@ -118,14 +153,14 @@ namespace SimpicServerLib
 
     enum class ClientActions
     {
-        Keep, // Keep all files. If so, no hashes for deletion will be sent.
-        Delete // Delete selected files by their SHA256 hash. 
+        Keep, // Keep all files. If so, (deprecated: no hashes for deletion) indices will be sent.
+        Delete // Delete selected files by their (deprecated: SHA256 hash.) index 
     };
 
     struct __attribute__((__packed__)) ClientAction
     {
         uint8_t action;
-        uint8_t deletions;
+        uint8_t deletions; // should be -1 on ClientActions::Keep
         // an array of indices will then be sent specifying which files should be deleted.
         // the indices should correspond to the order that the files were sent in, 0 indexed.
     };

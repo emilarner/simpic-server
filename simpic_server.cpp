@@ -9,7 +9,7 @@ namespace SimpicServerLib
 		moving_log = _moving_log;
 	}
 
-	void SimpicClient::deal_with_file(std::string &path, std::string &filename)
+	void SimpicClient::deal_with_file(const std::string &path, const std::string &filename)
 	{
 		std::string absolute_path = path + std::string("/") + filename;
 		std::string new_path = recycling_bin + filename + "_" + random_chars(RANDOM_CHARS_LENGTH);
@@ -460,8 +460,21 @@ cleanup:
 		cache->saveall();
 		closedir(d);
 
-		std::vector<std::vector<Image*>*> results = Image::find_similar_images(imgs, max_ham, [](int x){});
+		int total_images = 0;
+
+		struct UpdateHeader uh;
+		memset(&uh, 0, sizeof(uh));
+
+		std::vector<std::vector<Image*>*> results = Image::find_similar_images(imgs, max_ham, [this, &uh](int x){
+			uh.images = x;
+
+			if (x % UPDATE_INCREMENTS == 0) 
+				sendall(this->fd, &uh, sizeof(uh));
+		});
 		
+		uh.done = true;
+		sendall(fd, &uh, sizeof(uh));
+
 		int total = results.size();
 
 		try 

@@ -210,7 +210,13 @@ namespace SimpicServerLib
 
     void SimpicCache::insert(Image *img)
     {
-        entries_mutex.lock();
+        //entries_mutex.lock();
+
+        /* DATA RACE!!! If someone updates the new_entries list at the same time
+           another thread saves the cache, then information will be lost! 
+           thus, after all, we must use the same mutex when inserting and saving. */
+
+        saving_mutex.lock();
 
         /* If it is not already a part of the cache, make sure it is marked as a new entry. */
         if (cached.find(img->sha256) == cached.end())
@@ -218,7 +224,8 @@ namespace SimpicServerLib
 
         cached[img->sha256] = img;
 
-        entries_mutex.unlock();
+        saving_mutex.unlock();
+        //entries_mutex.unlock();
     }
 
     Image *SimpicCache::get_image(sha256ptr_t hash)

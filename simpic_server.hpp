@@ -54,7 +54,7 @@ namespace SimpicServerLib
         std::string to_string();
 
         /* Given a path and a filename, move the file to the recycling bin, per the client's requests. */
-        void deal_with_file(std::string &path, std::string &filename);
+        void deal_with_file(const std::string &path, const std::string &filename);
 
         /* Given a vector of Image pointers, send them to the client. */
         void set_of_pics(std::vector<Image*> *pics);

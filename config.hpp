@@ -1,7 +1,7 @@
 #pragma once
 
-#define BUFFER_SIZE 4096
-#define STRICT_MAX_HAM 8
+#define BUFFER_SIZE 8192
+#define STRICT_MAX_HAM 6
 #define RANDOM_CHARS_LENGTH 8
-
+#define UPDATE_INCREMENTS 5
 
