@@ -26,17 +26,40 @@ namespace SimpicServerLib
         uint32_t width;
         uint32_t height;
 
-        char magic[sizeof(PNG_MAGIC)];
+        char magic[8];
         std::fseek(fp, 0, SEEK_SET);
         std::fread(magic, 1, sizeof(magic), fp);
 
-        if (!!memcmp(magic, PNG_MAGIC, sizeof(magic)))
+        if (png_sig_cmp((png_const_bytep)magic, 0, sizeof(8)))
+        {
+            std::cerr << "libPNG: Invalid image\n";
             return std::nullopt;
+        }
 
-        png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+        /*
+        png_error_ptr handler = [](png_structp data, png_const_charp other) -> void {
+            std::cerr << "libPNG error: " << std::endl;
+            //*((png_structp*)other) = nullptr;
+        };
+        */
+        
+        png_structp png = png_create_read_struct(
+            PNG_LIBPNG_VER_STRING, 
+            (void*)&png, 
+            nullptr, 
+            nullptr
+        );
+
+        png_set_sig_bytes(png, 8);
 
         if (png == nullptr)
             return std::nullopt;
+
+        if (setjmp(png_jmpbuf(png)))
+        {
+            std::cerr << "libPNG failed to read image\n";
+            return std::nullopt;
+        }
 
         png_infop info = png_create_info_struct(png);
 
