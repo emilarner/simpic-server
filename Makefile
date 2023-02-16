@@ -1,5 +1,5 @@
 CC=g++
-LIBS=-L$(shell pwd) -lpHash -ljpeg -ltiff -lpng -lssl -lcrypto -lsimpicserver
+LIBS=-L$(shell pwd) -lpthread -lpHash -ljpeg -ltiff -lpng -lssl -lcrypto -lsimpicserver
 CPPFLAGS=-O2 -std=c++20
 
 
@@ -13,7 +13,7 @@ testing/test_child_node_alg: libsimpicserver.so testing/test_child_node_alg.o
 	$(CC) $(CPPFLAGS) -o testing/test_child_node_alg testing/test_child_node_alg.o $(LIBS)
 
 libsimpicserver.so: images.o networking.o simpic_cache.o simpic_server.o utils.o sha256.o
-	$(CC) $(CPPFLAGS) -shared -o libsimpicserver.so images.o networking.o simpic_cache.o simpic_server.o utils.o sha256.o
+	$(CC) $(CPPFLAGS) -shared -o libsimpicserver.so images.o networking.o simpic_cache.o simpic_server.o utils.o sha256.o $(LIBS)
 
 
 testing/test_simpic_alg.o: testing/test_simpic_alg.cpp

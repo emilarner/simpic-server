@@ -26,6 +26,13 @@ namespace SimpicServerLib
         uint32_t width;
         uint32_t height;
 
+        char magic[sizeof(PNG_MAGIC)];
+        std::fseek(fp, 0, SEEK_SET);
+        std::fread(magic, 1, sizeof(magic), fp);
+
+        if (!!memcmp(magic, PNG_MAGIC, sizeof(magic)))
+            return std::nullopt;
+
         png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
 
         if (png == nullptr)
