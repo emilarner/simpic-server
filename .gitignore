@@ -7,3 +7,4 @@ simpic_server
 testing/test_child_node_alg
 testing/test_simpic_alg
 *.simpic_cache
+*.simpic_cache_sha256
