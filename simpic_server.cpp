@@ -2,11 +2,13 @@
 
 namespace SimpicServerLib
 {
-	SimpicClient::SimpicClient(SimpicCache *_cache, const std::string &recycle_bin, std::ofstream *_moving_log)
+	SimpicClient::SimpicClient(SimpicCache *_cache, const std::string &recycle_bin, 
+			Logger *main, Logger *moving)
 	{
 		cache = _cache;
 		recycling_bin = recycle_bin;
-		moving_log = _moving_log;
+		main_log = main;
+		moving_log = moving;
 	}
 
 	void SimpicClient::deal_with_file(const std::string &path, const std::string &filename)
@@ -16,16 +18,16 @@ namespace SimpicServerLib
 
 		if (rename(absolute_path.c_str(), new_path.c_str()) < 0)
 		{
-			std::cout << "[" << to_string() << "]: failure moving: " << std::strerror(errno) << "\n";
+			std::cerr << "[" << to_string() << "]: failure moving: " << std::strerror(errno) << "\n";
 			return;
 		}
 
-		*moving_log << "Moved " << absolute_path << " to " << new_path << "\n";
-		moving_log->flush();
+		moving_log->write((std::string)"Moved" + absolute_path + (std::string)" to " + new_path);
 	}
 
 	SimpicServer::SimpicServer(uint16_t _port, const std::string &simpic_dir, const std::string &_recycle_bin)
 	{
+		std::cout << "Simpic server successfully initialized. " << std::endl;
 		recycle_bin_on = _recycle_bin != "";
 		recycle_bin = _recycle_bin;
 		port = _port;
@@ -33,8 +35,14 @@ namespace SimpicServerLib
 		/* Initialize and read everything into the cache, if it is present. */
 		cache = new SimpicCache(simpic_dir + "cache.simpic_cache");
 		cache->readall();
+		std::cout << "Cache successfully initialized." << std::endl;
 
-		moving_log = std::ofstream(simpic_dir + "moving_log", std::ios::binary | std::ios::app);
+		new_moving_log.open("/var/log/simpic_moving_log");
+		new_moving_log.open(simpic_dir + "moving_log");
+
+		new_activity_log.open("/var/log/simpic_log");
+		new_activity_log.open(simpic_dir + "log");
+
 		on_ready = []() -> void {};
 	}
 
@@ -51,7 +59,10 @@ namespace SimpicServerLib
 
 	void SimpicServer::start()
 	{
+		std::cout << "Simpic server started." << std::endl;
+
 		signal(SIGPIPE, SIG_IGN);
+
 		/* Make a TCP/IPv4 socket. */
 		fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
@@ -65,7 +76,10 @@ namespace SimpicServerLib
 
 		/* Make it so that the ports don't get clogged. */
 		if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(int)) < 0)
-			std::perror("setsockopt(SO_REUSEADDR) failed");
+		{
+			std::cerr << "setsockopt(SO_REUSEADDR) failed: " << std::strerror(errno) << "\n";
+			exit(-1);
+		}
 
 		/* If binding failed to the specified port. */
 		if ((bind(fd, (struct sockaddr*) &sock, sizeof(sock))) < 0)
@@ -74,7 +88,11 @@ namespace SimpicServerLib
 			exit(-1);
 		}
 
+		std::cout << "Simpic server bound to port " << port << "\n";
+
 		listen(fd, 64);
+
+		std::cout << "Simpic server now listening for connections.\n";
 
 		/* A callback for when the Simpic server is ready. */
 		on_ready();
@@ -84,9 +102,6 @@ namespace SimpicServerLib
 			struct sockaddr_in client;
 			socklen_t client_len = sizeof(client);
 
-			/* The client object needs to transcend the stack, so we need to heap allocate it. */
-			SimpicClient *sc = new SimpicClient(cache, recycle_bin, &moving_log);
-			
 			int cfd = 0;
 
 			/* Try to accept the client and then read its data into the structure, also getting its file descriptor. If it errors, print out the reason why and exit the program. */
@@ -96,10 +111,15 @@ namespace SimpicServerLib
 				exit(-2);
 			}
 
+			/* The client object needs to transcend the stack, so we need to heap allocate it. */
+			SimpicClient *sc = new SimpicClient(cache, recycle_bin, &new_activity_log, &new_moving_log);
+			
 			sc->addr = client;
 			sc->fd = cfd;
 			sc->recycling_bin = recycle_bin;
-			std::clog << "Client " << sc->to_string() << " connected!" << "\n";
+
+			std::cout << "Client " << sc->to_string() << " connected!" << "\n";
+			new_activity_log.write((std::string)"Client " + sc->to_string() + (std::string)" connected!");
 
 			/* It belongs on another thread. */
 			std::thread th(&SimpicServer::handler, this, sc);
@@ -251,7 +271,7 @@ namespace SimpicServerLib
 		}
 		catch (std::exception &ex)
 		{
-			std::cerr << "[" << client->to_string() << "]: " << "general exception occured: " << ex.what();
+			std::cerr << "[" << client->to_string() << "]: " << "General exception occured: " << ex.what();
 			std::cerr << "\n";
 		}
 
@@ -296,6 +316,8 @@ cleanup:
 
 			imghdr.filename_length = pic->filename.size() + 1;
 			std::memcpy(imghdr.sha256_hash, pic->sha256, sizeof(imghdr.sha256_hash));
+			// inefficient ~~~^
+
 			imghdr.size = pic->length;
 			
 			imghdr.path_length = pic->path.size() + 1;
@@ -408,7 +430,6 @@ cleanup:
 			/* ... plus I think it's better than <fstream>. */
 
 			std::string absname = dir + "/" + std::string(ent->d_name);
-
 			std::FILE *fp = std::fopen(absname.c_str(), "rb");
 
 			/* The file didn't open for some reason? */
@@ -418,9 +439,29 @@ cleanup:
 				continue;
 			}
 
-			/* Calculate the SHA256 hash of the image. */
-			sha256_t image_hash[SHA256_DIGEST_LENGTH];
-			calculate_sha256(fp, image_hash);
+			struct stat fileinfo;
+			stat(absname.c_str(), &fileinfo);
+
+			sha256_t image_hash_buffer[SHA256_DIGEST_LENGTH];
+			SHA256CachedObject *sha256_obj = nullptr;
+
+			/* Attempt to pull the SHA256 hash from the cache. */
+			if ((sha256_obj = cache->get_sha256(absname, fileinfo.st_size, fileinfo.st_mtim.tv_sec)) 
+					== nullptr)
+			{
+				calculate_sha256(fp, image_hash_buffer);
+
+				sha256_obj = new SHA256CachedObject(
+					image_hash_buffer,
+					fileinfo.st_mtim.tv_sec,
+					fileinfo.st_size
+				);
+
+				/* Update the cache with a new one. */
+				cache->insert({absname, sha256_obj});
+			}
+
+			sha256ptr_t image_hash = sha256_obj->hash;
 
 			switch (type) 
 			{
@@ -463,17 +504,21 @@ cleanup:
 		int total_images = 0;
 
 		struct UpdateHeader uh;
-		memset(&uh, 0, sizeof(uh));
+		std::memset(&uh, 0, sizeof(uh));
 
 		std::vector<std::vector<Image*>*> results = Image::find_similar_images(imgs, max_ham, [this, &uh](int x){
 			uh.images = x;
 
-			if (x % UPDATE_INCREMENTS == 0) 
-				sendall(this->fd, &uh, sizeof(uh));
+			if (x % UPDATE_INCREMENTS == 0)
+			{
+				send(this->fd, &uh, sizeof(uh), MSG_DONTWAIT);
+				//sendall(this->fd, &uh, sizeof(uh));
+			}
 		});
 		
 		uh.done = true;
-		sendall(fd, &uh, sizeof(uh));
+		//sendall(fd, &uh, sizeof(uh));
+		send(fd, &uh, sizeof(uh), MSG_DONTWAIT);
 
 		int total = results.size();
 

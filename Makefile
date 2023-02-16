@@ -1,6 +1,6 @@
 CC=g++
 LIBS=-L$(shell pwd) -lpHash -ljpeg -ltiff -lpng -lssl -lcrypto -lsimpicserver
-CPPFLAGS=-g -std=c++20
+CPPFLAGS=-O2 -std=c++20
 
 
 simpic_server: libsimpicserver.so main.o testing/test_simpic_alg testing/test_child_node_alg simpic_protocol.hpp

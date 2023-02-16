@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -7,6 +9,9 @@
 #include <openssl/sha.h>
 
 #include "config.hpp"
+
+
+#define SHA256_EXTENSION ".simpicsha256"
 
 namespace SimpicServerLib
 {
@@ -23,4 +28,13 @@ namespace SimpicServerLib
     /* Calculate the SHA256 hash of the file opened by 'fs'. */
     /* Writes to a block of memory pointed to by 'where'. Make sure it can hold at least 32 bytes! */
     sha256ptr_t calculate_sha256(std::FILE *fp, sha256ptr_t where);
+
+    struct SHA256CachedObject
+    {
+        sha256_t hash[SHA256_DIGEST_LENGTH];
+        int64_t timestamp;
+        uint64_t length;
+
+        SHA256CachedObject(sha256ptr_t _hash, int64_t _timestamp, uint64_t _length);
+    };
 }

@@ -18,6 +18,7 @@
 
 #include <signal.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <netinet/in.h>
@@ -32,7 +33,7 @@
 #include "images.hpp"
 #include "videos.hpp"
 #include "audios.hpp"
-
+#include "utils.hpp"
 
 #include "config.hpp"
 
@@ -42,8 +43,10 @@ namespace SimpicServerLib
     {
     public:
         SimpicCache *cache; 
+        Logger *moving_log;
+        Logger *main_log;
+
         std::string recycling_bin;
-        std::ofstream *moving_log;
 
         struct sockaddr_in addr;
         int fd;
@@ -62,7 +65,7 @@ namespace SimpicServerLib
         /* Go through a directory, grab all of its files, and then send them to the client (simplified)*/
         int simpic_in_directory(std::string &dir, bool recursive, uint8_t max_ham);
 
-        SimpicClient(SimpicCache *_cache, const std::string &recycle_bin, std::ofstream *_moving_log);
+        SimpicClient(SimpicCache *_cache, const std::string &recycle_bin, Logger *main, Logger *moving);
     };
 
     class SimpicServer
@@ -70,7 +73,9 @@ namespace SimpicServerLib
     private:
         SimpicCache *cache;
 
-        std::ofstream moving_log;
+        Logger new_moving_log;
+        Logger new_activity_log;
+
         std::string recycle_bin;
         bool recycle_bin_on;
 

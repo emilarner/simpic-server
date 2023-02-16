@@ -2,6 +2,43 @@
 
 namespace SimpicServerLib
 {
+    Logger::Logger()
+    {
+        /* ISO 8601 Time Format */
+        time_format = "%FT%TZ";
+    }
+
+    void Logger::set_time_format(const char *format)
+    {
+        time_format = format;
+    }
+
+    void Logger::write(const std::string &msg)
+    {
+        time_t now;
+        std::time(&now);
+
+        char result[32] = {0};
+        std::strftime(result, sizeof(result), time_format, std::gmtime(&now));
+
+        for (std::ofstream &fp : fps)
+        {
+            fp << "[" << result << "]: " << msg << std::endl;
+            fp.flush();
+        }
+    }
+
+    void Logger::open(const std::string &path)
+    {
+        fps.push_back(std::ofstream(path, std::ios::binary | std::ios::app));
+    }
+
+    Logger::~Logger()
+    {
+        for (std::ofstream &of : fps)
+            of.close();
+    }
+
     bool dir_is_child(const std::string &dir1, const std::string &dir2)
     {
         /* Tree Algebra has to be done here! */

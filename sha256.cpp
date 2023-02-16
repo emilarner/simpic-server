@@ -22,7 +22,13 @@ namespace SimpicServerLib
         } 
 
         SHA256_Final((unsigned char*) where, &ctx);
-        std::fseek(fp, 0, SEEK_SET);
         return where;
+    }
+
+    SHA256CachedObject::SHA256CachedObject(sha256ptr_t _hash, int64_t _timestamp, uint64_t _length)
+    {
+        std::memcpy(hash, _hash, SHA256_DIGEST_LENGTH);
+        timestamp = _timestamp;
+        length = _length;
     }
 }

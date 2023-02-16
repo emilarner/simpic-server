@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include <cstring>
+#include <sys/stat.h>
 
 #include "../images.hpp"
 #include "../simpic_cache.hpp"
@@ -50,16 +51,33 @@ int main(int argc, char **argv, char **envp)
             continue;
         
         std::string cpp_name(ent->d_name);
+        std::string cpp_dir = testing_directory + (std::string)"/" + cpp_name;
         std::FILE *reading = std::fopen((testing_directory + "/" + cpp_name).c_str(), "rb");
 
         Image *img = nullptr;
         
-        sha256_t image_hash[SHA256_DIGEST_LENGTH];
-        calculate_sha256(reading, (sha256ptr_t) image_hash);
+        struct stat fileinfo;
+        stat(cpp_dir.c_str(), &fileinfo);
 
-        if ((img = cache.get_image(image_hash)) == nullptr || !use_cache)
+        sha256_t image_hash[SHA256_DIGEST_LENGTH];
+        SHA256CachedObject *image_hash_ptr;
+
+        if ((image_hash_ptr = cache.get_sha256(cpp_dir, fileinfo.st_size, fileinfo.st_mtim.tv_sec)) == nullptr)
         {
-            img = new Image(testing_directory, cpp_name, reading, image_hash);
+            calculate_sha256(reading, image_hash);
+            image_hash_ptr = new SHA256CachedObject(
+                image_hash,
+                std::time(nullptr),
+                std::ftell(reading)
+            );
+
+            std::fseek(reading, 0, SEEK_SET);
+            cache.insert({cpp_dir, image_hash_ptr});
+        }
+
+        if ((img = cache.get_image(image_hash_ptr->hash)) == nullptr || !use_cache)
+        {
+            img = new Image(testing_directory, cpp_name, reading, image_hash_ptr->hash);
             cache.insert(img);
             img->get_info(reading);
         }

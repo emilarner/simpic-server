@@ -1,6 +1,7 @@
 *.o
 *.so
 testing/*.o
+testing/dataset/
 simpic_server
 .vscode
 testing/test_child_node_alg

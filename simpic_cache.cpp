@@ -26,6 +26,7 @@ namespace SimpicServerLib
     SimpicCache::SimpicCache(std::string filename)
     {
         location = filename;
+        sha256_location = filename + (std::string)"_sha256";
 
         /* The Simpic cache will get corrupted if multiple server instances are ran. */
         /* We use a UNIX socket to determine if an instance is running, to avoid */
@@ -93,74 +94,145 @@ namespace SimpicServerLib
     {
         close(lock_fd);
         unlink("/tmp/simpic_server.locksock");
-    }
 
-    void SimpicCache::init_cache_file()
-    {
-        struct cache_header ch;
-        ch.magic = SIMPIC_CACHE_MAGIC;
-        ch.entries = 0;
-
-        output = std::ofstream(location, std::ios::binary);
-        output.write((char*) &ch, sizeof(ch));
-        output.close();
+        for (auto &[key, value] : cached)
+            delete value;
+        
+        for (auto &[key, value] : sha256_cached)
+            delete value;
     }
 
     int SimpicCache::readall()
     {
-        FILE *fp = std::fopen(location.c_str(), "rb");
-        if (fp == nullptr)
-            return 0;
+        std::FILE *fp = std::fopen(location.c_str(), "rb");
+        std::FILE *fp2 = std::fopen(sha256_location.c_str(), "rb");
 
-        fclose(fp);
-        
-        struct cache_header ch;
-        input = std::ifstream(location, std::ios::binary);
-        input.read((char*) &ch, sizeof(ch));
-
-        /* Erroneous magic. */
-        if (ch.magic != SIMPIC_CACHE_MAGIC)
+        if (fp2 != nullptr)
         {
-            throw SimpicCacheException(
-                (std::string)"The cache is corrupt and does not have the magic: " + location,
-                0
-            );
+            struct cache_sha256_header shahdr;
+
+            std::ifstream sha256read(sha256_location, std::ios::binary);
+            sha256read.read((char*) &shahdr, sizeof(shahdr));
+
+            if (shahdr.magic != SIMPIC_SHA256_CACHE_MAGIC)
+            {   
+                sha256read.close();
+                throw SimpicCacheException("The SHA256 cache magic isn't right; it is corrupt.", -1);
+            }
+
+            for (int i = 0; i < shahdr.entries; i++)
+            {
+                struct cache_sha256_entry shaent;
+                sha256read.read((char*) &shaent, sizeof(shaent));
+
+                SHA256CachedObject *shaobj = new SHA256CachedObject(
+                    shaent.hash,
+                    shaent.timestamp,
+                    shaent.length
+                );
+
+                std::string result = "";
+
+                int whole = shaent.path_len / 256;
+                int frac = shaent.path_len % 256;
+
+                char buffer[256];
+
+                for (int j = 0; j < whole; j++)
+                {
+                    sha256read.read(buffer, 256);
+                    result += buffer;
+                }
+
+                sha256read.read(buffer, frac);
+                result += buffer;
+
+                sha256_cached[result] = shaobj;
+                result.clear();
+            }
+
+            sha256read.close();
+            std::fclose(fp2);
         }
 
-        for (int i = 0; i < ch.entries; i++)
+        if (fp != nullptr)
         {
-            struct cache_entry main_ent;
-            input.read((char*) &main_ent, sizeof(main_ent));
+            struct cache_header ch;
+            input = std::ifstream(location, std::ios::binary);
+            input.read((char*) &ch, sizeof(ch));
 
-            switch ((CacheEntryTypes) main_ent.type)
+            /* Erroneous magic. */
+            if (ch.magic != SIMPIC_CACHE_MAGIC)
             {
-                case CacheEntryTypes::Image: 
+                input.close();
+
+                throw SimpicCacheException(
+                    (std::string)"The cache is corrupt and does not have the magic: " + location,
+                    0
+                );
+            }
+
+            for (int i = 0; i < ch.entries; i++)
+            {
+                struct cache_entry main_ent;
+                input.read((char*) &main_ent, sizeof(main_ent));
+
+                switch ((CacheEntryTypes) main_ent.type)
                 {
-                    struct cache_image_entry ent;
-                    input.read((char*) &ent, sizeof(ent));
-                    ent.sha256_hash[sizeof(ent.sha256_hash)];
+                    case CacheEntryTypes::Image: 
+                    {
+                        struct cache_image_entry ent;
+                        input.read((char*) &ent, sizeof(ent));
+                        ent.sha256_hash[sizeof(ent.sha256_hash)];
 
-                    Image *img = new Image();
+                        Image *img = new Image();
 
-                    img->height = ent.height;
-                    img->width = ent.width;
-                    img->phash = ent.perceptual_hash;
-                    std::memcpy(img->sha256, ent.sha256_hash, SHA256_DIGEST_LENGTH);
-                    img->length = ent.size;
+                        img->height = ent.height;
+                        img->width = ent.width;
+                        img->phash = ent.perceptual_hash;
+                        std::memcpy(img->sha256, ent.sha256_hash, SHA256_DIGEST_LENGTH);
+                        img->length = ent.size;
 
-                    cached[img->sha256] = img;
-                    break;
+                        cached[img->sha256] = img;
+                        break;
+                    }
                 }
             }
-        }
 
-        input.close();
+            input.close();
+            std::fclose(fp);
+        }
         return 0;
     }
 
     void SimpicCache::saveall()
     {
         saving_mutex.lock();
+
+        /* Write updated header to SHA256 Cache file. */
+        struct cache_sha256_header shahdr;
+        shahdr.magic = SIMPIC_SHA256_CACHE_MAGIC;
+        shahdr.entries = sha256_cached.size() + new_sha256_entries.size();
+        std::ofstream sha256_write(sha256_location, std::ios::binary | std::ios::app);
+        sha256_write.write((const char*)&shahdr, sizeof(shahdr));
+        sha256_write.seekp(0, std::ios::end);
+
+        for (std::pair<std::string, SHA256CachedObject*> item : new_sha256_entries)
+        {
+            struct cache_sha256_entry shaent;
+
+            // inefficient but organized
+            std::memcpy(shaent.hash, item.second->hash, SHA256_DIGEST_LENGTH);
+            shaent.length = item.second->length;
+            shaent.timestamp = item.second->timestamp;
+            shaent.path_len = item.first.size() + 1;
+
+            sha256_write.write((const char*) &shaent, sizeof(shaent));
+            sha256_write.write((const char*) item.first.c_str(), shaent.path_len);
+        }
+
+        new_sha256_entries.clear();
+        sha256_write.close();
 
         if (new_entries.size() == 0)
         {
@@ -228,6 +300,16 @@ namespace SimpicServerLib
         //entries_mutex.unlock();
     }
 
+    void SimpicCache::insert(std::pair<std::string, SHA256CachedObject*> shaobj)
+    {
+        saving_mutex.lock();
+
+        new_sha256_entries.push_back(shaobj);
+        sha256_cached[shaobj.first] = shaobj.second;
+
+        saving_mutex.unlock();
+    }
+
     Image *SimpicCache::get_image(sha256ptr_t hash)
     {
         std::map<sha256ptr_t, Image*, SHA256Comparator>::iterator it = cached.find(hash);
@@ -235,12 +317,39 @@ namespace SimpicServerLib
         if (it == cached.end())
             return nullptr;
 
-        return (*(it)).second;
+        return it->second;
     }
 
-    std::map<sha256ptr_t, Image*, SHA256Comparator> *SimpicCache::get_cached()
+    SHA256CachedObject *SimpicCache::get_sha256(const std::string &path, uint64_t length, uint64_t timestamp)
     {
-        return &cached;
+        std::unordered_map<std::string, SHA256CachedObject*>::iterator 
+                it = sha256_cached.find(path);
+
+        if (it == sha256_cached.end())
+            return nullptr;
+
+        SHA256CachedObject *obj = it->second;
+
+        /* If these are different, we can be 99% sure the hash is different. */
+        /* Due to the data structure of the cache file, removing items is very expensive. */
+        /* Instead, we can just let the newest occurance of the path in the cache file */
+        /* overwrite all other instances once it is put into the std::unordered_ map<K, V>. */
+        /* This is fine, because this is a rather rare occurance. */
+
+        if (obj->length != length)
+            return nullptr;
+
+        if (obj->timestamp != timestamp)
+            return nullptr;
+
+        
+        /* Then why not just associate the perceptual hash with the path then??? */
+        /* This builds a more robust catalogue of images, because paths often and will */
+        /* change throughout the duration of a filesystem's existence. */
+        /* This will greatly increase the performance of this program with files > 100MiB*/
+        /* while using std::string as the key instead would not really do that much... */
+
+        return obj;
     }
 
     CacheEntryTypes SimpicCache::get_type_from_extension(const std::string &ext)
@@ -248,5 +357,6 @@ namespace SimpicServerLib
         if (Image::type_from_extension(ext) != ImageType::Undefined)
             return CacheEntryTypes::Image;
 
+        return CacheEntryTypes::Undefined;
     }
 }

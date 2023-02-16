@@ -4,19 +4,34 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <fstream>
 
 #include <unistd.h>
 #include <dirent.h>
 #include <cerrno>
 #include <cstring>
 #include <cstdlib>
-
 #include <sys/stat.h>
-
 #include <ctime>
 
 namespace SimpicServerLib
 {
+
+    class Logger
+    {
+    private:
+        std::vector<std::ofstream> fps;
+        const char *time_format;
+    public:
+        Logger(std::string filename);
+        Logger();
+        ~Logger();
+
+        void open(const std::string &path);
+        void set_time_format(const char *format);
+        void write(const std::string &msg);
+    };
+
     /* where dir1 is assumed parent and dir2 is assumed child, check if dir2 is actually a child. */
     bool dir_is_child(const std::string &dir1, const std::string &dir2);
 
