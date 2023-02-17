@@ -19,6 +19,7 @@
 #include <signal.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/sendfile.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <netinet/in.h>

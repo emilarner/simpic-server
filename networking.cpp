@@ -30,4 +30,17 @@ namespace SimpicServerLib
             throw simpic_networking_exception("Error sendall(): " + std::string(std::strerror(err)), err);
         }
     }
+
+    void new_sendfile(int cfd, int file, size_t file_size)
+    {
+        off_t offset = 0;
+        int total_amnt = 0;
+        int amnt = 0;
+
+        while (total_amnt != file_size)
+        {
+            amnt = sendfile(cfd, file, &offset, 8192);
+            total_amnt += amnt;
+        }
+    }
 }

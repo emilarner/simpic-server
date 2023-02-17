@@ -338,17 +338,21 @@ cleanup:
 			/* If the client didn't make a plea for no data... Self-explanatory.*/
 			if (!plea.no_data)
 			{
-				std::ifstream reading(pic->abspath());
-
+				//std::ifstream reading(pic->abspath());
+				std::FILE *fp = std::fopen(pic->abspath().c_str(), "rb");
+				std::fseek(fp, 0, SEEK_END);
+				size_t file_size = std::ftell(fp);
+				std::fseek(fp, 0, SEEK_SET);
+				
+				size_t amnt = 0;
 				char buffer[BUFFER_SIZE];
 
-				while (!reading.eof())
-				{
-					reading.read(buffer, sizeof(buffer));
-					sendall(fd, buffer, reading.gcount());
-				}
+				new_sendfile(fd, fileno(fp), file_size);
+				
 
-				reading.close();
+				std::fclose(fp);
+				//sendfile()
+				//reading.close();
 			}
 		}
 
@@ -479,6 +483,7 @@ cleanup:
 						/* would happen. */
 						if (!img->get_info(fp))
 						{
+							std::fclose(fp);
 							delete img;
 							continue;
 						}
