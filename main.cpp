@@ -36,10 +36,12 @@ int main(int argc, char **argv, char **envp)
     std::string simpic_local_folder = simpic_folder(home_dir);
     std::string default_recycling_bin = simpic_local_folder + "recycling_bin/";
     std::string default_cache = simpic_local_folder + "cache.simpic_cache";
+    std::string default_alt_tmp = simpic_local_folder + "tmp/";
 
     /* Create the directory for simpic if it does not already exist. */
     mkdir_dir(simpic_local_folder);
     mkdir_dir(default_recycling_bin);
+    mkdir_dir(default_alt_tmp);
 
     char *recycling_bin = nullptr;
     bool force_delete = false;

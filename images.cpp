@@ -123,8 +123,8 @@ namespace SimpicServerLib
             Image *current = images[i];
 
             /* We don't need to over this, since we already did below... */
-            if (seen.find(i) != seen.end())
-                continue;
+            //if (seen.find(i) != seen.end())
+            //    continue;
 
             results[i] = new std::vector<Image*>();
             results[i]->push_back(current);
@@ -133,34 +133,24 @@ namespace SimpicServerLib
             for (int j = i + 1; j < images.size(); j++)
             {
                 /* Again, let's not repeat things.*/
-                if (seen.find(j) != seen.end())
-                    continue;
-
-                /* The SHA256 hashes of the files are the same, therefore they are duplicates. */
-                if (!std::memcmp(current->sha256, images[j]->sha256, SHA256_DIGEST_LENGTH))
-                {
-                    seen.insert(j);
-                    //image_hams[current->sha256]->push_back(images[j]);
-                    results[i]->push_back(images[j]);
-                    continue;
-                }
+                //if (seen.find(j) != seen.end())
+                //    continue;
 
                 uint8_t hamming_distance = ph_hamming_distance(current->phash, images[j]->phash);
 
                 if (hamming_distance > max_ham)
                     continue;
 
-
                 count++;
 
                 results[i]->push_back(images[j]);
-                seen.insert(j);
+                //seen.insert(j);
             }
 
             if (count != 0)
                 progress_callback(count);
                 
-            seen.insert(i);
+            //seen.insert(i);
         }
 
         std::vector<std::vector<Image*>*> result;
@@ -174,6 +164,31 @@ namespace SimpicServerLib
         }
 
         return result;
+    }
+
+    std::vector<std::vector<Image*>*> Image::find_duplicates(std::vector<Image*> &haystack,
+                                                            std::vector<Image*> &needles,
+                                                            uint8_t max_ham)
+    {
+        std::vector<std::vector<Image*>*> results;
+
+        for (Image *img : needles)
+        {
+            std::vector<Image*> *vec = new std::vector<Image*>();
+            vec->push_back(img);
+
+            for (Image *img2 : haystack)
+            {
+                if (ph_hamming_distance(img->phash, img2->phash) > max_ham)
+                    continue;
+
+                vec->push_back(img2);
+            }
+
+            results.push_back(vec);
+        }
+
+        return results;
     }
 
     void Image::add_name(std::string name)

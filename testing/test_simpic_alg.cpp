@@ -40,7 +40,7 @@ int main(int argc, char **argv, char **envp)
         }
     }
 
-    std::string testing_directory = "dataset";
+    std::string testing_directory = "simpic_dataset";
     std::vector<Image*> images;
 
     DIR *d = opendir(testing_directory.c_str());

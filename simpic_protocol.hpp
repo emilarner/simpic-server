@@ -14,7 +14,8 @@ namespace SimpicServerLib
         DirectoryAlreadyActive = 2,
         NoResults = 3,
         UnreasonablyLongPath = 4, 
-        UnreasonablyLongMaxHam = 5
+        UnreasonablyLongMaxHam = 5,
+        UnreasonablyLongFileSize = 6
     };
 
     enum class DataTypes
@@ -50,6 +51,7 @@ namespace SimpicServerLib
     {
         uint8_t type; // that of a value in DataTypes.
         uint8_t count; 
+        uint16_t check_id; // if operation was to check, this is the needle id.
     };
 
     /* This is every image. It describes the file extension, the filename, the width, height, and its length in bytes, all of which are very useful to the client. After this header, it will send the picture data in bytes, the length of which being described by length. */
@@ -79,10 +81,17 @@ namespace SimpicServerLib
     enum class ClientRequests
     {
         Exit, // Close the connection, no more requests. 
-        Scan, // Scan a directory for similar images. 
-        ScanRecursive, // Scan recursively in a directory for similar images. 
+        Scan, // Scan a directory for similar images/media. 
+        ScanRecursive, // Scan recursively in a directory for similar images/media. 
         Check, // Check if a file or a set of files would be duplicates in a directory.
-        CheckRecursive // Check recursively the same thing as above ^^^
+        CheckRecursive, // Check recursively the same thing as above ^^^,
+        Cache, // Let the Simpic server scan (recursively or not) through a given directory
+               // as to cache all of the perceptual/cryptographic hashes ahead of time,
+               // for speed and efficiency related reasons.
+        CacheRecursive, // ~~^^ Same thing, but recursively, starting from a directory. 
+                        // Should have used bitwise flags, but too late now!
+        Hash // Compute the perceptual hash of a given file and send it back, taking
+             // advantage of the efficiency of the cache and the C/C++ language. 
     };
 
     struct __attribute__((__packed__)) ClientRequest
@@ -93,11 +102,14 @@ namespace SimpicServerLib
         uint16_t path_length; // of where to start searching
 
         // client will send a null-terminated path length. 
+        // if type == Check or type == CheckRecursive, a uint16_t specifying the no. files to check
+        // will be sent subsequent to this. 
     };
 
     enum class ClientCheckRequestTypes
     {
         ByData, // the client shall send the file data for the server to check.
+        // ^~~~ not recommended for large files
         ByPath, // the client shall send the path of the file that already exists on the server
         ByPHash // the client shall send the standard perceptual hash for that format.
         // ~~~^ for images, it's the 64-bit perceptual hash from the DCT of the image.
@@ -117,20 +129,10 @@ namespace SimpicServerLib
         // ~~~^ an enum from ClientCheckRequestTypes
     };
 
-    struct __attribute__((__packed__)) ServerCheckResponse
-    {
-        uint16_t results; // if -1, the server didn't find anything; otherwise, no. of results
-    };
-
-    struct __attribute__((__packed__)) ServerCheckIndividualGenericResponse
-    {
-        uint16_t index; // this tells you from what index we are talking about
-                        // ~~^ referring to the indices given initially by the client to check.
-        
-        struct SetHeader info; // and now the information of all of the files that conflict.
-        // hence forth, treat it as you would a regular scan... the info structure will contain
-        // the type and number of subsequent headers that you may plea to receive data or not
-    };
+    // ~~^ the response will be the MainHeader describing the number of results it found
+    // with then SetHeaders containing the duplicates it checked against the files uploaded
+    // where the first index of the each set will be the file supplied to the check request
+    // (called the needle)
 
     /* A plea containing bitwise flags (abstracted through bitfields) of what the client does not want from the file or whether they want to skip the file entirely. */
     struct __attribute__((__packed__)) ClientPlea

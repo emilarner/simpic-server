@@ -35,39 +35,12 @@
 #include "videos.hpp"
 #include "audios.hpp"
 #include "utils.hpp"
+#include "simpic_client.hpp"
 
 #include "config.hpp"
 
 namespace SimpicServerLib
 {
-    class SimpicClient
-    {
-    public:
-        SimpicCache *cache; 
-        Logger *moving_log;
-        Logger *main_log;
-
-        std::string recycling_bin;
-
-        struct sockaddr_in addr;
-        int fd;
-
-        
-
-        /* Get the string representation of the client (its IPv4 address and its port. )*/
-        std::string to_string();
-
-        /* Given a path and a filename, move the file to the recycling bin, per the client's requests. */
-        void deal_with_file(const std::string &path, const std::string &filename);
-
-        /* Given a vector of Image pointers, send them to the client. */
-        void set_of_pics(std::vector<Image*> *pics);
-
-        /* Go through a directory, grab all of its files, and then send them to the client (simplified)*/
-        int simpic_in_directory(std::string &dir, bool recursive, uint8_t max_ham);
-
-        SimpicClient(SimpicCache *_cache, const std::string &recycle_bin, Logger *main, Logger *moving);
-    };
 
     class SimpicServer
     {
@@ -78,6 +51,7 @@ namespace SimpicServerLib
         Logger new_activity_log;
 
         std::string recycle_bin;
+        std::string alt_tmp;
         bool recycle_bin_on;
 
         int fd;

@@ -51,6 +51,7 @@ namespace SimpicServerLib
     {
     public:
         bool bad;
+        bool needle; // is this file/image not a result, but one of the queries?
 
         uint16_t width;
         uint16_t height;
@@ -81,6 +82,12 @@ namespace SimpicServerLib
         /* Group all similar images together. */
         static std::vector<std::vector<Image*>*> find_similar_images(std::vector<Image*> &images, 
                     uint8_t max_ham, std::function<void(int)> progress_callback);
+
+        /* Given images to search for, find if they are duplicates within a haystack of images.*/
+        /* The first Image* in each vector will be the needle for the search. */
+        static std::vector<std::vector<Image*>*> find_duplicates(std::vector<Image*> &haystack,
+                                                                std::vector<Image*> &needles,
+                                                                uint8_t max_ham);
 
         /* If there isn't a name to this Image, add a name by value. */
         void add_name(std::string name);
